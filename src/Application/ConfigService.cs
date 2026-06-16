@@ -6,50 +6,81 @@ namespace SshConfigTui.Application;
 public class ConfigService
 {
     private readonly SshConfigRepository _repository;
+    private readonly SshConfigParser _parser;
+    private readonly DebugLogger _log;
 
-    public ConfigService(SshConfigRepository repository)
+    public ConfigService(SshConfigRepository repository, SshConfigParser parser, DebugLogger log)
     {
         _repository = repository;
+        _parser = parser;
+        _log = log;
     }
 
     public SshConfig? CurrentConfig { get; private set; }
 
-    public async Task LoadAsync()
+    public void Load()
     {
-        CurrentConfig = await _repository.LoadAsync();
+        _log.Write("Load: start");
+        CurrentConfig = _repository.Load();
+        _log.Write($"Load: done, config={(CurrentConfig != null ? "OK" : "null")}");
     }
 
-    public async Task SaveAsync()
+    public void Save()
     {
+        _log.Write("Save: start");
         if (CurrentConfig != null)
-            await _repository.SaveAsync(CurrentConfig);
+        {
+            _repository.Save(CurrentConfig);
+            _log.Write("Save: done");
+        }
+        else
+        {
+            _log.Write("Save: skipped, no config loaded");
+        }
     }
 
     public List<HostEntry> GetAllHosts()
     {
-        if (CurrentConfig == null) return new();
-        return CurrentConfig.GetHosts()
+        if (CurrentConfig == null)
+        {
+            _log.Write("GetAllHosts: config is null, returning empty");
+            return new();
+        }
+
+        var hosts = CurrentConfig.GetHosts()
             .Where(h => h.Pattern != "*")
             .Select(HostEntry.FromHostSection)
             .ToList();
+
+        _log.Write($"GetAllHosts: returning {hosts.Count} hosts");
+        return hosts;
     }
 
     public HostEntry? GetHost(string name)
     {
         var section = CurrentConfig?.GetHost(name);
-        return section != null ? HostEntry.FromHostSection(section) : null;
+        var result = section != null ? HostEntry.FromHostSection(section) : null;
+        _log.Write($"GetHost('{name}'): {(result != null ? "found" : "not found")}");
+        return result;
     }
 
     public HostEntry? GetEffectiveConfig(string hostName)
     {
+        _log.Write($"GetEffectiveConfig('{hostName}'): start");
+
         var host = CurrentConfig?.GetHost(hostName);
-        if (host == null) return null;
+        if (host == null)
+        {
+            _log.Write($"  Host '{hostName}' not found");
+            return null;
+        }
 
         var entry = HostEntry.FromHostSection(host);
         var global = CurrentConfig?.GetGlobalConfig();
 
         if (global != null)
         {
+            _log.Write("  Merging with global config (Host *)");
             foreach (var dir in global.Directives)
             {
                 switch (dir.Key.ToLowerInvariant())
@@ -74,11 +105,13 @@ public class ConfigService
             }
         }
 
+        _log.Write($"GetEffectiveConfig: done -> {entry.Name} @ {entry.HostName}");
         return entry;
     }
 
     public void AddHost(HostEntry entry)
     {
+        _log.Write($"AddHost: '{entry.Name}'");
         if (CurrentConfig == null) return;
 
         var section = new HostSection
@@ -93,6 +126,7 @@ public class ConfigService
 
     public void UpdateHost(HostEntry entry)
     {
+        _log.Write($"UpdateHost: '{entry.Name}'");
         if (CurrentConfig == null) return;
 
         var existing = CurrentConfig.GetHost(entry.Name);
@@ -100,22 +134,59 @@ public class ConfigService
         {
             existing.Directives = ToDirectives(entry);
             existing.Groups = new List<string>(entry.Groups);
+            _log.Write($"  Updated {existing.Directives.Count} directives, {existing.Groups.Count} groups");
+        }
+        else
+        {
+            _log.Write("  Host not found for update");
         }
     }
 
     public void DeleteHost(string name)
     {
+        _log.Write($"DeleteHost: '{name}'");
         if (CurrentConfig == null) return;
         var node = CurrentConfig.Nodes.OfType<HostSection>()
             .FirstOrDefault(h => h.Pattern == name);
         if (node != null)
+        {
             CurrentConfig.Nodes.Remove(node);
+            _log.Write("  Removed");
+        }
+        else
+        {
+            _log.Write("  Not found");
+        }
     }
 
     public HostEntry? GetGlobalConfig()
     {
         var section = CurrentConfig?.GetGlobalConfig();
-        return section != null ? HostEntry.FromHostSection(section) : null;
+        var result = section != null ? HostEntry.FromHostSection(section) : null;
+        _log.Write($"GetGlobalConfig: {(result != null ? "found" : "not found")}");
+        return result;
+    }
+
+    public int ImportFragment(string fragment)
+    {
+        _log.Write("ImportFragment: start");
+        if (CurrentConfig == null) return 0;
+
+        var tempConfig = _parser.Parse(fragment);
+        var imported = 0;
+        foreach (var host in tempConfig.GetHosts())
+        {
+            if (CurrentConfig.GetHost(host.Pattern) != null)
+            {
+                _log.Write($"  Host '{host.Pattern}' already exists, skipping");
+                continue;
+            }
+            CurrentConfig.Nodes.Add(host);
+            imported++;
+            _log.Write($"  Imported host '{host.Pattern}'");
+        }
+        _log.Write($"ImportFragment: imported {imported} hosts");
+        return imported;
     }
 
     private static List<SshDirective> ToDirectives(HostEntry entry)

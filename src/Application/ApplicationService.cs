@@ -8,52 +8,70 @@ public class ApplicationService
     private readonly SshConfigRepository _repository;
     private readonly ConfigService _configService;
     private readonly GroupService _groupService;
+    private readonly SshConfigParser _parser;
+    private readonly DebugLogger _log;
 
     public ApplicationService(
         SshConfigRepository repository,
         ConfigService configService,
-        GroupService groupService)
+        GroupService groupService,
+        SshConfigParser parser,
+        DebugLogger log)
     {
         _repository = repository;
         _configService = configService;
         _groupService = groupService;
+        _parser = parser;
+        _log = log;
     }
 
     public SshConfigRepository Repository => _repository;
     public ConfigService ConfigService => _configService;
     public GroupService GroupService => _groupService;
 
-    public async Task InitializeAsync()
+    public void Initialize()
     {
-        await _configService.LoadAsync();
+        _log.Write("Initialize: start");
+        _configService.Load();
+        _log.Write("Initialize: done");
     }
 
     public bool HasUnsavedChanges() => _repository.HasUnsavedChanges();
 
-    public async Task SaveAllAsync()
+    public void SaveAll()
     {
-        await _configService.SaveAsync();
+        _log.Write("SaveAll: start");
+        _configService.Save();
+        _log.Write("SaveAll: done");
     }
 
     public string GetConfigPath() => _repository.ConfigPath;
 
     public string ExportHost(string hostName)
     {
+        _log.Write($"ExportHost: '{hostName}'");
         var host = _configService.CurrentConfig?.GetHost(hostName);
-        if (host == null) return string.Empty;
+        if (host == null)
+        {
+            _log.Write("  Host not found");
+            return string.Empty;
+        }
 
-        var parser = new SshConfigParser();
         var tempConfig = new SshConfig();
         tempConfig.Nodes.Add(host);
-        return parser.Serialize(tempConfig);
+        return _parser.Serialize(tempConfig);
     }
 
     public string ExportGroup(string group)
     {
+        _log.Write($"ExportGroup: '{group}'");
         var hosts = _groupService.GetHostsByGroup(group);
-        if (hosts.Count == 0) return string.Empty;
+        if (hosts.Count == 0)
+        {
+            _log.Write("  No hosts in group");
+            return string.Empty;
+        }
 
-        var parser = new SshConfigParser();
         var tempConfig = new SshConfig();
         foreach (var hostEntry in hosts)
         {
@@ -61,6 +79,6 @@ public class ApplicationService
             if (section != null)
                 tempConfig.Nodes.Add(section);
         }
-        return parser.Serialize(tempConfig);
+        return _parser.Serialize(tempConfig);
     }
 }

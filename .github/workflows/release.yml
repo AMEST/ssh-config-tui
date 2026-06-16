@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  PROJECT_PATH: src/ssh-config-tui.csproj
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            artifact_name: ssh-config-tui-linux-x64
+          - os: ubuntu-latest
+            rid: linux-arm64
+            artifact_name: ssh-config-tui-linux-arm64
+          - os: macos-latest
+            rid: osx-x64
+            artifact_name: ssh-config-tui-osx-x64
+          - os: macos-latest
+            rid: osx-arm64
+            artifact_name: ssh-config-tui-osx-arm64
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Publish self-contained
+      run: |
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          -c Release \
+          -r ${{ matrix.rid }} \
+          --self-contained true \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=true \
+          -o publish/${{ matrix.artifact_name }}
+        tar -czf ${{ matrix.artifact_name }}.tar.gz -C publish/${{ matrix.artifact_name }} .
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.artifact_name }}.tar.gz
+
+  publish-nuget:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    - name: Pack dotnet tool
+      run: dotnet pack ${{ env.PROJECT_PATH }} -c Release -o nuget
+    - name: Push to NuGet.org
+      run: dotnet nuget push nuget/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+  create-release:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: '**/*.tar.gz'
+        generate_release_notes: true

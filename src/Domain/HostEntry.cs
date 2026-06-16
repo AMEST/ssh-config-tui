@@ -33,8 +33,7 @@ public class HostEntry
                     entry.User = dir.Value;
                     break;
                 case "port":
-                    int.TryParse(dir.Value, out var port);
-                    entry.Port = port;
+                    entry.Port = int.TryParse(dir.Value, out var port) ? port : 22;
                     break;
                 case "identityfile":
                     entry.IdentityFile = dir.Value;
@@ -43,8 +42,8 @@ public class HostEntry
                     entry.ProxyJump = dir.Value;
                     break;
                 case "forwardagent":
-                    bool.TryParse(dir.Value, out var fa);
-                    entry.ForwardAgent = fa;
+                    var fav = dir.Value.ToLowerInvariant();
+                    entry.ForwardAgent = fav is "yes" or "true" or "1";
                     break;
                 case "localforward":
                     entry.LocalForwards.Add(dir.Value);

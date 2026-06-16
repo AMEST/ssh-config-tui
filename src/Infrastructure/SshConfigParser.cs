@@ -6,14 +6,24 @@ namespace SshConfigTui.Infrastructure;
 public class SshConfigParser
 {
     private const string GroupPrefix = "# tui-group:";
+    private readonly DebugLogger _log;
+
+    public SshConfigParser(DebugLogger log)
+    {
+        _log = log;
+    }
 
     public SshConfig Parse(string text)
     {
+        _log.Write($"Parse: {text.Length} chars, {text.Split('\n').Length} lines");
+
         var config = new SshConfig();
         var lines = text.Split('\n');
 
         ConfigNode? currentSection = null;
         var pendingComments = new List<string>();
+        var pendingGroups = new List<string>();
+        var sectionBlockedForGroups = false;
 
         for (int i = 0; i < lines.Length; i++)
         {
@@ -22,6 +32,7 @@ public class SshConfigParser
 
             if (string.IsNullOrWhiteSpace(line))
             {
+                sectionBlockedForGroups = currentSection != null;
                 FlushPendingComments(config, currentSection, pendingComments);
                 config.Nodes.Add(new EmptyLine { LineNumber = lineNum });
                 continue;
@@ -32,14 +43,27 @@ public class SshConfigParser
 
             if (trimmed.StartsWith('#'))
             {
-                if (currentSection is HostSection host && indent == 0 && trimmed.StartsWith(GroupPrefix))
+                if (indent == 0 && trimmed.StartsWith(GroupPrefix))
                 {
                     var groupsStr = trimmed[GroupPrefix.Length..].Trim();
                     var groups = groupsStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                         .Select(g => g.Trim())
                         .Where(g => g.Length > 0)
                         .ToList();
-                    host.Groups.AddRange(groups);
+
+                    if (groups.Count > 0)
+                    {
+                        if (currentSection is HostSection host && !sectionBlockedForGroups)
+                        {
+                            _log.Write($"  tui-group at L{lineNum}: [{string.Join(", ", groups)}] for host '{host.Pattern}'");
+                            host.Groups.AddRange(groups);
+                        }
+                        else
+                        {
+                            _log.Write($"  tui-group at L{lineNum}: [{string.Join(", ", groups)}] (pending for next host)");
+                            pendingGroups.AddRange(groups);
+                        }
+                    }
                 }
                 else if (currentSection is HostSection hostSection && indent > 0)
                 {
@@ -60,71 +84,86 @@ public class SshConfigParser
                 continue;
             }
 
-            if (indent == 0)
+            if (trimmed.StartsWith("Host ", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Host", StringComparison.OrdinalIgnoreCase))
             {
-                FlushPendingComments(config, currentSection, pendingComments);
+                var pattern = trimmed.Length > 5 ? trimmed[5..].Trim() : string.Empty;
+                _log.Write($"  Host section at L{lineNum}: '{pattern}'");
+                currentSection = new HostSection
+                {
+                    Pattern = pattern,
+                    StartLine = lineNum,
+                    LeadingComments = new List<string>(pendingComments)
+                };
+                if (pendingGroups.Count > 0)
+                {
+                    ((HostSection)currentSection).Groups.AddRange(pendingGroups);
+                    pendingGroups.Clear();
+                }
+                pendingComments.Clear();
+                sectionBlockedForGroups = false;
+                config.Nodes.Add(currentSection);
+                continue;
+            }
 
-                if (trimmed.StartsWith("Host ", StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.Equals("Host", StringComparison.OrdinalIgnoreCase))
+            if (trimmed.StartsWith("Match ", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Match", StringComparison.OrdinalIgnoreCase))
+            {
+                var criteria = trimmed.Length > 6 ? trimmed[6..].Trim() : string.Empty;
+                _log.Write($"  Match section at L{lineNum}: '{criteria}'");
+                currentSection = new MatchSection
                 {
-                    var pattern = trimmed.Length > 5 ? trimmed[5..].Trim() : string.Empty;
-                    currentSection = new HostSection
-                    {
-                        Pattern = pattern,
-                        StartLine = lineNum,
-                        LeadingComments = new List<string>(pendingComments)
-                    };
-                    pendingComments.Clear();
-                    config.Nodes.Add(currentSection);
-                }
-                else if (trimmed.StartsWith("Match ", StringComparison.OrdinalIgnoreCase) ||
-                         trimmed.Equals("Match", StringComparison.OrdinalIgnoreCase))
+                    Criteria = criteria,
+                    StartLine = lineNum,
+                    LeadingComments = new List<string>(pendingComments)
+                };
+                pendingComments.Clear();
+                sectionBlockedForGroups = false;
+                config.Nodes.Add(currentSection);
+                continue;
+            }
+
+            if (indent == 0 && currentSection == null)
+            {
+                _log.Write($"  Global pre-section directive at L{lineNum}: '{trimmed}'");
+                pendingComments.Add(line);
+                continue;
+            }
+
+            // Parse as directive for current section (indent is optional in SSH config)
+            var parts = ParseDirective(trimmed);
+            if (parts != null)
+            {
+                var directive = new SshDirective
                 {
-                    var criteria = trimmed.Length > 6 ? trimmed[6..].Trim() : string.Empty;
-                    currentSection = new MatchSection
-                    {
-                        Criteria = criteria,
-                        StartLine = lineNum,
-                        LeadingComments = new List<string>(pendingComments)
-                    };
-                    pendingComments.Clear();
-                    config.Nodes.Add(currentSection);
-                }
-                else
-                {
-                    pendingComments.Add(line);
-                }
+                    Key = parts.Value.Key,
+                    Value = parts.Value.Value,
+                    LineNumber = lineNum
+                };
+
+                if (currentSection is HostSection host)
+                    host.Directives.Add(directive);
+                else if (currentSection is MatchSection match)
+                    match.Directives.Add(directive);
             }
             else
             {
-                var parts = ParseDirective(trimmed);
-                if (parts != null)
-                {
-                    var directive = new SshDirective
-                    {
-                        Key = parts.Value.Key,
-                        Value = parts.Value.Value,
-                        LineNumber = lineNum
-                    };
-
-                    if (currentSection is HostSection host)
-                        host.Directives.Add(directive);
-                    else if (currentSection is MatchSection match)
-                        match.Directives.Add(directive);
-                }
-                else
-                {
-                    pendingComments.Add(line);
-                }
+                _log.Write($"  Cannot parse directive at L{lineNum}: '{trimmed}'");
+                pendingComments.Add(line);
             }
         }
 
         FlushPendingComments(config, currentSection, pendingComments);
+
+        var hostCount = config.GetHosts().Count;
+        _log.Write($"Parse done: {hostCount} hosts, {config.Nodes.Count} nodes");
         return config;
     }
 
     public string Serialize(SshConfig config)
     {
+        _log.Write($"Serialize: {config.Nodes.Count} nodes");
+
         var lines = new List<string>();
 
         foreach (var node in config.Nodes)
@@ -152,7 +191,9 @@ public class SshConfigParser
             }
         }
 
-        return string.Join("\n", lines);
+        var result = string.Join("\n", lines);
+        _log.Write($"Serialize done: {result.Length} chars");
+        return result;
     }
 
     private void SerializeHostSection(List<string> lines, HostSection host)
@@ -161,7 +202,8 @@ public class SshConfigParser
 
         if (host.Groups.Count > 0 && !host.LeadingComments.Any(c => c.TrimStart().StartsWith(GroupPrefix)))
         {
-            lines.Add($"{GroupPrefix} {string.Join(", ", host.Groups)}");
+            var groupLine = $"{GroupPrefix} {string.Join(", ", host.Groups)}";
+            lines.Add(groupLine);
         }
 
         lines.Add($"Host {host.Pattern}".TrimEnd());
