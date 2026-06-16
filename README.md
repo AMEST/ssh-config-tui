@@ -2,6 +2,10 @@
 
 A terminal UI for managing your SSH config. Organize hosts into groups, edit parameters, and keep your `~/.ssh/config` clean — all from the comfort of your terminal.
 
+## Screenshot
+
+[![TUI](docs/screenshot.png)](docs/screenshot.png)
+
 ## Features
 
 - Browse and edit all your SSH hosts
