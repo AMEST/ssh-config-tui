@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using SshConfigTui.Application;
 using SshConfigTui.Domain;
+using SshConfigTui.Infrastructure;
 using Terminal.Gui;
 
 namespace SshConfigTui.UI;
@@ -12,6 +13,7 @@ public class MainWindow : Window
     private readonly ClipboardService _clipboardService;
     private readonly SessionService _sessionService;
     private readonly TemplateService _templateService;
+    private readonly DebugLogger _log;
     private readonly MenuBar _menuBar;
     private readonly FrameView _groupsFrame;
     private readonly GroupTreeView _groupTreeView;
@@ -24,12 +26,13 @@ public class MainWindow : Window
     private string _currentGroup = "All";
     private bool _hasUnsavedChanges;
 
-    public MainWindow(ApplicationService appService, ClipboardService clipboardService, SessionService sessionService, TemplateService templateService)
+    public MainWindow(ApplicationService appService, ClipboardService clipboardService, SessionService sessionService, TemplateService templateService, DebugLogger log)
     {
         _appService = appService;
         _clipboardService = clipboardService;
         _sessionService = sessionService;
         _templateService = templateService;
+        _log = log;
         Title = "SSH Config Manager";
 
         _menuBar = new MenuBar
@@ -75,7 +78,7 @@ public class MainWindow : Window
             Width = Dim.Percent(30),
             Height = Dim.Fill(1),
             Title = " Groups ",
-            CanFocus = false,
+            CanFocus = true,
         };
         _groupsFrame.Add(_groupTreeView);
 
@@ -97,7 +100,7 @@ public class MainWindow : Window
             Width = Dim.Percent(70),
             Height = Dim.Fill(1),
             Title = " Hosts ",
-            CanFocus = false,
+            CanFocus = true,
         };
         _hostsFrame.Add(_hostListView);
 
@@ -111,6 +114,13 @@ public class MainWindow : Window
         };
 
         Add(_menuBar, _groupsFrame, _hostsFrame, _statusLabel);
+
+        Initialized += (_, _) =>
+        {
+            _log.Write("MainWindow initialized, setting focus");
+            _groupTreeView.SetFocus();
+            _log.Write($"  groupTreeView.HasFocus={_groupTreeView.HasFocus}, hostListView.HasFocus={_hostListView.HasFocus}");
+        };
     }
 
     public void Initialize()
@@ -134,6 +144,7 @@ public class MainWindow : Window
                 RefreshHostList();
                 _statusLabel.Text = $"Config loaded ({_hosts.Count} hosts) | {_appService.GetConfigPath()}";
             }
+
         }
         catch (Exception ex)
         {
@@ -518,7 +529,9 @@ public class MainWindow : Window
     {
         MessageBox.Query(
             "Keybindings",
-            "Ctrl+S  Save\nCtrl+Q  Quit\nCtrl+N  Add host\nCtrl+T  Test connection\nF5      Refresh\nEnter   Edit host\nDel     Delete host",
+            "Ctrl+S  Save\nCtrl+Q  Quit\nCtrl+N  Add host\nCtrl+T  Test connection\n" +
+            "F5      Refresh\nAlt+F/E/V/H  Menus\nTab/Shift+Tab  Switch panel\n" +
+            "Enter   Edit host\nDel     Delete host\n↑/↓     Navigate lists",
             0, "OK");
     }
 
@@ -698,6 +711,8 @@ public class MainWindow : Window
 
     protected override bool OnKeyDown(Key keyEvent)
     {
+        _log.Write($"OnKeyDown: key={keyEvent}, groupFocus={_groupTreeView.HasFocus}, hostFocus={_hostListView.HasFocus}, groupsFrameFocus={_groupsFrame.HasFocus}, hostsFrameFocus={_hostsFrame.HasFocus}");
+
         if (keyEvent == Key.Q.WithCtrl || keyEvent == Key.C.WithCtrl)
         {
             OnQuit();
@@ -708,11 +723,26 @@ public class MainWindow : Window
             OnTestConnection();
             return true;
         }
-        if (keyEvent == Key.Enter)
+        if (keyEvent == Key.Tab)
         {
-            OnEditHost();
+            if (_hostListView.HasFocus || _hostsFrame.HasFocus)
+                _groupTreeView.SetFocus();
+            else
+                _hostListView.SetFocus();
+            _log.Write($"  after Tab: groupFocus={_groupTreeView.HasFocus}, hostFocus={_hostListView.HasFocus}");
             return true;
         }
-        return base.OnKeyDown(keyEvent);
+        if (keyEvent == Key.Tab.WithShift)
+        {
+            if (_groupTreeView.HasFocus || _groupsFrame.HasFocus)
+                _hostListView.SetFocus();
+            else
+                _groupTreeView.SetFocus();
+            _log.Write($"  after Shift+Tab: groupFocus={_groupTreeView.HasFocus}, hostFocus={_hostListView.HasFocus}");
+            return true;
+        }
+        var handled = base.OnKeyDown(keyEvent);
+        _log.Write($"  unhandled, base returned {handled}");
+        return handled;
     }
 }

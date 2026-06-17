@@ -10,7 +10,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ssh-config-tui</ToolCommandName>
     <PackageId>ssh-config-tui</PackageId>
-    <PackageVersion>1.0.1</PackageVersion>
+    <PackageVersion>1.0.2</PackageVersion>
     <Authors>AMEST</Authors>
     <Description>A terminal UI for managing your SSH config. Organize hosts into groups, edit parameters, and keep your ~/.ssh/config clean.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

@@ -14,7 +14,8 @@ services.AddSingleton<ApplicationService>();
 services.AddSingleton<ClipboardService>();
 services.AddSingleton<SessionService>();
 services.AddSingleton<TemplateService>();
-services.AddSingleton<DebugLogger>();
+var debugMode = args.Contains("--debug");
+services.AddSingleton(_ => new DebugLogger(debugMode));
 
 var provider = services.BuildServiceProvider();
 var logger = provider.GetRequiredService<DebugLogger>();
@@ -35,7 +36,7 @@ try
     var clipboard = provider.GetRequiredService<ClipboardService>();
     var session = provider.GetRequiredService<SessionService>();
     var templates = provider.GetRequiredService<TemplateService>();
-    var mainWindow = new MainWindow(appService, clipboard, session, templates);
+    var mainWindow = new MainWindow(appService, clipboard, session, templates, logger);
     logger.Write("Initialize main window");
     mainWindow.Initialize();
     logger.Write("Run application");

@@ -7,8 +7,14 @@ public class DebugLogger : IDisposable
     private readonly StreamWriter _writer;
     private readonly object _lock = new();
 
-    public DebugLogger(string path = "debug.log")
+    public DebugLogger(bool enabled = false, string path = "debug.log")
     {
+        if (!enabled)
+        {
+            _writer = StreamWriter.Null;
+            return;
+        }
+
         try
         {
             _writer = new StreamWriter(path, append: false) { AutoFlush = true };
