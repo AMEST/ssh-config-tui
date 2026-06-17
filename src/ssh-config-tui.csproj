@@ -14,8 +14,8 @@
     <Authors>AMEST</Authors>
     <Description>A terminal UI for managing your SSH config. Organize hosts into groups, edit parameters, and keep your ~/.ssh/config clean.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>ssh;config;tui;terminal;groups</PackageTags>
+    <RepositoryUrl>https://github.com/AMEST/ssh-config-tui</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
