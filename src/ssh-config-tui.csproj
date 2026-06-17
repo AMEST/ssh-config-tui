@@ -10,13 +10,18 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ssh-config-tui</ToolCommandName>
     <PackageId>ssh-config-tui</PackageId>
-    <PackageVersion>1.0.3</PackageVersion>
+    <PackageVersion>1.1.0</PackageVersion>
     <Authors>AMEST</Authors>
     <Description>A terminal UI for managing your SSH config. Organize hosts into groups, edit parameters, and keep your ~/.ssh/config clean.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>ssh;config;tui;terminal;groups</PackageTags>
     <RepositoryUrl>https://github.com/AMEST/ssh-config-tui</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath=""/>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Terminal.Gui" Version="2.0.0" />

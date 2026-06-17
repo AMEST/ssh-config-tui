@@ -1,6 +1,8 @@
 # ssh-config-tui
 
-A terminal UI for managing your SSH config. Organize hosts into groups, edit parameters, and keep your `~/.ssh/config` clean — all from the comfort of your terminal.
+A terminal UI for managing your SSH config. Organize hosts into groups, edit parameters, keep your `~/.ssh/config` clean — all from the comfort of your terminal.
+
+> **Notice:** This tool is designed for **Linux** and **macOS** only. Windows is not supported.
 
 ## Screenshot
 
@@ -15,7 +17,9 @@ A terminal UI for managing your SSH config. Organize hosts into groups, edit par
 - Copy connection string to clipboard
 - Import/export host blocks
 - Templates for quick host creation
-- Backup on save (`~/.ssh/config.backup`)
+- SSH key browser — view and select keys in `~/.ssh/`
+- SSH key generator — generate RSA, ECDSA, or ED25519 key pairs
+- Backup on save (`~/.ssh/config.bak`)
 
 ## Installation
 
