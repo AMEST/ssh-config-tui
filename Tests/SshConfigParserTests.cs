@@ -53,13 +53,31 @@ public class SshConfigParserTests
     }
 
     [Fact]
-    public void Should_AssignGroup_When_GroupCommentAfterHost()
+    public void Should_NotAssignGroup_When_GroupCommentAfterHostWithNoNextHost()
     {
         var text = "Host myserver\n    User admin\n# tui-group: work";
         var config = _parser.Parse(text);
 
         var host = Assert.Single(config.GetHosts());
-        Assert.Contains("work", host.Groups);
+        Assert.DoesNotContain("work", host.Groups);
+    }
+
+    [Fact]
+    public void Should_AssignGroupToNextHost_When_NoEmptyLineBetween()
+    {
+        var text = "Host hal-9000\n    User amest\n    ForwardAgent yes\n# tui-group: home\nHost hal-430-g5\n    HostName 192.168.0.104\n    User amest";
+        var config = _parser.Parse(text);
+
+        var hosts = config.GetHosts();
+        Assert.Equal(2, hosts.Count);
+
+        var h1 = hosts[0];
+        Assert.Equal("hal-9000", h1.Pattern);
+        Assert.DoesNotContain("home", h1.Groups);
+
+        var h2 = hosts[1];
+        Assert.Equal("hal-430-g5", h2.Pattern);
+        Assert.Contains("home", h2.Groups);
     }
 
     [Fact]

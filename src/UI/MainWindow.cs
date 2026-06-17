@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using SshConfigTui.Application;
 using SshConfigTui.Domain;
 using SshConfigTui.Infrastructure;
+using SshConfigTui.UI.Dialogs;
 using Terminal.Gui;
 
 namespace SshConfigTui.UI;
@@ -59,6 +59,11 @@ public class MainWindow : Window
                     new MenuItem("_Refresh", "Reload config (F5)", OnRefresh, null, null, Key.F5),
                     new MenuItem("_Test Connection", "Test ssh connection (Ctrl+T)", OnTestConnection, null, null, Key.T.WithCtrl),
                     new MenuItem("_Copy SSH String", "Copy ssh command", OnCopySshString),
+                }),
+                new MenuBarItem("_Tools", new[]
+                {
+                    new MenuItem("SSH _Keys", "Browse SSH keys in ~/.ssh", OnSshKeys),
+                    new MenuItem("_Generate SSH Key", "Generate a new SSH key pair", OnGenerateSshKey),
                 }),
                 new MenuBarItem("_Help", new[]
                 {
@@ -188,137 +193,15 @@ public class MainWindow : Window
 
     private void ShowHostDetail(string hostName)
     {
-        var entry = _appService.ConfigService.GetEffectiveConfig(hostName);
-        if (entry == null) return;
-
-        var sourceEntry = _appService.ConfigService.GetHost(hostName);
-
-        var dialog = new Dialog
+        var dialog = new HostDetailDialog(hostName, _appService.ConfigService, _log);
+        Terminal.Gui.Application.Run(dialog);
+        if (dialog.Saved)
         {
-            Title = $"Edit {hostName}",
-            Width = 60,
-            Height = 22,
-        };
-
-        var y = 0;
-        var nameLabel = new Label { X = 0, Y = y, Text = $"Host: {hostName}" };
-        y += 2;
-
-        var hostNameField = new TextField
-        {
-            X = 0, Y = y, Width = Dim.Fill(),
-            Text = sourceEntry?.HostName ?? entry.HostName
-        };
-        AddField(dialog, "HostName:", hostNameField, ref y);
-        y++;
-
-        var userField = new TextField
-        {
-            X = 0, Y = y, Width = Dim.Fill(),
-            Text = sourceEntry?.User ?? entry.User
-        };
-        AddField(dialog, "User:", userField, ref y);
-        y++;
-
-        var portField = new TextField
-        {
-            X = 0, Y = y, Width = Dim.Fill(),
-            Text = (sourceEntry?.Port ?? entry.Port).ToString()
-        };
-        AddField(dialog, "Port:", portField, ref y);
-        y++;
-
-        var idFileField = new TextField
-        {
-            X = 0, Y = y, Width = Dim.Fill(),
-            Text = sourceEntry?.IdentityFile ?? entry.IdentityFile
-        };
-        AddField(dialog, "IdentityFile:", idFileField, ref y);
-        y++;
-
-        var proxyField = new TextField
-        {
-            X = 0, Y = y, Width = Dim.Fill(),
-            Text = sourceEntry?.ProxyJump ?? entry.ProxyJump
-        };
-        AddField(dialog, "ProxyJump:", proxyField, ref y);
-        y++;
-
-        var forwardAgentCheckbox = new CheckBox
-        {
-            X = 0, Y = y,
-            Text = "ForwardAgent",
-            CheckedState = (sourceEntry?.ForwardAgent ?? entry.ForwardAgent) ? CheckState.Checked : CheckState.UnChecked
-        };
-        dialog.Add(forwardAgentCheckbox);
-        y++;
-
-        var groupsField = new TextField
-        {
-            X = 15, Y = y, Width = Dim.Fill(),
-            Text = sourceEntry != null ? string.Join(", ", sourceEntry.Groups) : ""
-        };
-        AddField(dialog, "Groups:", groupsField, ref y);
-        y += 2;
-
-        var saveBtn = new Button { X = 0, Y = y, Text = "Save" };
-        saveBtn.Accepting += (_, _) =>
-        {
-            var groups = (groupsField.Text ?? "")
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(g => g.Length > 0)
-                .ToList();
-
-            if (sourceEntry == null)
-            {
-                var newEntry = new HostEntry
-                {
-                    Name = hostName,
-                    HostName = hostNameField.Text ?? "",
-                    User = userField.Text ?? "",
-                    Port = int.TryParse(portField.Text, out var p) ? p : 22,
-                    IdentityFile = idFileField.Text ?? "",
-                    ProxyJump = proxyField.Text ?? "",
-                    ForwardAgent = forwardAgentCheckbox.CheckedState == CheckState.Checked,
-                    Groups = groups,
-                };
-                _appService.ConfigService.AddHost(newEntry);
-            }
-            else
-            {
-                sourceEntry.HostName = hostNameField.Text ?? "";
-                sourceEntry.User = userField.Text ?? "";
-                sourceEntry.Port = int.TryParse(portField.Text, out var p) ? p : 22;
-                sourceEntry.IdentityFile = idFileField.Text ?? "";
-                sourceEntry.ProxyJump = proxyField.Text ?? "";
-                sourceEntry.ForwardAgent = forwardAgentCheckbox.CheckedState == CheckState.Checked;
-                sourceEntry.Groups = groups;
-                _appService.ConfigService.UpdateHost(sourceEntry);
-            }
             _hasUnsavedChanges = true;
             _statusLabel.Text = "Changes pending. Save (Ctrl+S) to persist.";
             _groupTreeView.RefreshGroups();
             LoadHostsForGroup(_currentGroup);
-            dialog.RequestStop();
-        };
-
-        var cancelBtn = new Button { X = 10, Y = y, Text = "Cancel" };
-        cancelBtn.Accepting += (_, _) => dialog.RequestStop();
-
-        dialog.Add(saveBtn, cancelBtn);
-        Terminal.Gui.Application.Run(dialog);
-    }
-
-    private static void AddField(Dialog dialog, string label, TextField field, ref int y)
-    {
-        var lbl = new Label
-        {
-            X = 0, Y = y, Width = 15, Text = label
-        };
-        field.X = 15;
-        field.Y = y;
-        field.Width = Dim.Fill();
-        dialog.Add(lbl, field);
+        }
     }
 
     private void OnEditHost()
@@ -331,117 +214,15 @@ public class MainWindow : Window
 
     private void OnAddHost()
     {
-        var dialog = new Dialog
+        var dialog = new AddHostDialog(_appService.ConfigService, _templateService, _log, _currentGroup);
+        Terminal.Gui.Application.Run(dialog);
+        if (dialog.Saved)
         {
-            Title = "Add New Host",
-            Width = 60,
-            Height = 24,
-        };
-
-        var y = 0;
-        var templates = _templateService.GetTemplates();
-        var templateNames = new List<string> { "(none)" };
-        templateNames.AddRange(templates.Select(t => t.Name));
-
-        var templateLabel = new Label { X = 0, Y = y, Width = 15, Text = "Template:" };
-        var templateRadio = new RadioGroup
-        {
-            X = 15, Y = y,
-            RadioLabels = templateNames.ToArray(),
-            SelectedItem = 0,
-        };
-        dialog.Add(templateLabel, templateRadio);
-        y += templateNames.Count + 1;
-
-        var nameField = new TextField { X = 15, Y = y, Width = Dim.Fill(), Text = "" };
-        AddField(dialog, "Host pattern:", nameField, ref y);
-        y++;
-
-        var hostNameField = new TextField { X = 15, Y = y, Width = Dim.Fill(), Text = "" };
-        AddField(dialog, "HostName:", hostNameField, ref y);
-        y++;
-
-        var userField = new TextField { X = 15, Y = y, Width = Dim.Fill(), Text = "" };
-        AddField(dialog, "User:", userField, ref y);
-        y++;
-
-        var portField = new TextField { X = 15, Y = y, Width = Dim.Fill(), Text = "22" };
-        AddField(dialog, "Port:", portField, ref y);
-        y++;
-
-        var idFileField = new TextField { X = 15, Y = y, Width = Dim.Fill(), Text = "" };
-        AddField(dialog, "IdentityFile:", idFileField, ref y);
-        y++;
-
-        var proxyField = new TextField { X = 15, Y = y, Width = Dim.Fill(), Text = "" };
-        AddField(dialog, "ProxyJump:", proxyField, ref y);
-        y++;
-
-        var forwardAgentCheckbox = new CheckBox { X = 0, Y = y, Text = "ForwardAgent", CheckedState = CheckState.UnChecked };
-        dialog.Add(forwardAgentCheckbox);
-        y++;
-
-        var defaultGroups = (!Group.IsBuiltInGroup(_currentGroup)) ? _currentGroup : "";
-        var groupsField = new TextField { X = 15, Y = y, Width = Dim.Fill(), Text = defaultGroups };
-        AddField(dialog, "Groups:", groupsField, ref y);
-        y += 2;
-
-        var saveBtn = new Button { X = 0, Y = y, Text = "Add" };
-        saveBtn.Accepting += (_, _) =>
-        {
-            var name = nameField.Text ?? "";
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                MessageBox.ErrorQuery("Error", "Host pattern cannot be empty.", "OK");
-                return;
-            }
-
-            var groups = (groupsField.Text ?? "")
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(g => g.Length > 0)
-                .ToList();
-
-            HostEntry entry;
-            var selectedTemplate = templateRadio.SelectedItem;
-            if (selectedTemplate > 0 && selectedTemplate <= templates.Count)
-            {
-                entry = _templateService.ApplyTemplate(templates[selectedTemplate - 1].Name, name.Trim());
-                entry.HostName = hostNameField.Text ?? "";
-                if (!string.IsNullOrEmpty(userField.Text)) entry.User = userField.Text ?? "";
-                if (int.TryParse(portField.Text, out var p)) entry.Port = p;
-                if (!string.IsNullOrEmpty(idFileField.Text)) entry.IdentityFile = idFileField.Text ?? "";
-                if (!string.IsNullOrEmpty(proxyField.Text)) entry.ProxyJump = proxyField.Text ?? "";
-                entry.ForwardAgent = forwardAgentCheckbox.CheckedState == CheckState.Checked;
-                entry.Groups = groups;
-            }
-            else
-            {
-                entry = new HostEntry
-                {
-                    Name = name.Trim(),
-                    HostName = hostNameField.Text ?? "",
-                    User = userField.Text ?? "",
-                    Port = int.TryParse(portField.Text, out var p) ? p : 22,
-                    IdentityFile = idFileField.Text ?? "",
-                    ProxyJump = proxyField.Text ?? "",
-                    ForwardAgent = forwardAgentCheckbox.CheckedState == CheckState.Checked,
-                    Groups = groups,
-                };
-            }
-
-            _appService.ConfigService.AddHost(entry);
             _hasUnsavedChanges = true;
-            _statusLabel.Text = $"Host '{entry.Name}' added. Save (Ctrl+S) to persist.";
+            _statusLabel.Text = $"Host '{dialog.AddedHostName}' added. Save (Ctrl+S) to persist.";
             _groupTreeView.RefreshGroups();
             LoadHostsForGroup(_currentGroup);
-            dialog.RequestStop();
-        };
-
-        var cancelBtn = new Button { X = 10, Y = y, Text = "Cancel" };
-        cancelBtn.Accepting += (_, _) => dialog.RequestStop();
-
-        dialog.Add(saveBtn, cancelBtn);
-        Terminal.Gui.Application.Run(dialog);
+        }
     }
 
     private void OnDeleteHost()
@@ -517,6 +298,18 @@ public class MainWindow : Window
         }
     }
 
+    private static void OnSshKeys()
+    {
+        var dialog = new SshKeyPickerDialog();
+        Terminal.Gui.Application.Run(dialog);
+    }
+
+    private static void OnGenerateSshKey()
+    {
+        var dialog = new GenerateSshKeyDialog();
+        Terminal.Gui.Application.Run(dialog);
+    }
+
     private static void OnAbout()
     {
         MessageBox.Query(
@@ -540,56 +333,7 @@ public class MainWindow : Window
         if (_hostListView.SelectedItem < 0 || _hostListView.SelectedItem >= _hostListSource.Count) return;
         var item = _hostListSource[_hostListView.SelectedItem];
         var hostName = item.TrimStart().Split(' ')[0];
-
-        var dialog = new Dialog
-        {
-            Title = $"Test Connection: {hostName}",
-            Width = 70,
-            Height = 20,
-        };
-
-        var textView = new TextView
-        {
-            X = 0, Y = 0,
-            Width = Dim.Fill(),
-            Height = Dim.Fill(2),
-            ReadOnly = true,
-            WordWrap = false,
-            Text = $"Testing ssh connection for '{hostName}'...\n\n"
-        };
-
-        var closeBtn = new Button { X = 0, Y = Pos.AnchorEnd(1), Text = "Close" };
-        closeBtn.Accepting += (_, _) => dialog.RequestStop();
-        dialog.Add(textView, closeBtn);
-
-        try
-        {
-            var psi = new ProcessStartInfo("ssh", $"-G \"{hostName}\"")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            var process = Process.Start(psi);
-            if (process != null)
-            {
-                var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
-                process.WaitForExit(10000);
-                textView.Text = output + (error.Length > 0 ? $"\n--- stderr ---\n{error}" : "");
-                if (textView.Text.Length == 0)
-                    textView.Text = "(no output from ssh -G)";
-            }
-            else
-            {
-                textView.Text = "Error: could not start ssh process.";
-            }
-        }
-        catch (Exception ex)
-        {
-            textView.Text = $"Error: {ex.Message}";
-        }
-
+        var dialog = new TestConnectionDialog(hostName);
         Terminal.Gui.Application.Run(dialog);
     }
 
@@ -605,51 +349,15 @@ public class MainWindow : Window
 
     private void OnImport()
     {
-        var dialog = new Dialog
-        {
-            Title = "Import Hosts",
-            Width = 70,
-            Height = 20,
-        };
-
-        var textView = new TextView
-        {
-            X = 0, Y = 0,
-            Width = Dim.Fill(),
-            Height = Dim.Fill(2),
-            Text = "# Paste SSH config fragment here:\n"
-        };
-
-        var importBtn = new Button { X = 0, Y = Pos.AnchorEnd(1), Text = "Import" };
-        var cancelBtn = new Button { X = 10, Y = Pos.AnchorEnd(1), Text = "Cancel" };
-
-        importBtn.Accepting += (_, _) =>
-        {
-            var fragment = textView.Text ?? "";
-            if (string.IsNullOrWhiteSpace(fragment))
-            {
-                MessageBox.ErrorQuery("Error", "Nothing to import.", "OK");
-                return;
-            }
-
-            try
-            {
-                var imported = _appService.ConfigService.ImportFragment(fragment);
-                _hasUnsavedChanges = true;
-                _groupTreeView.RefreshGroups();
-                LoadHostsForGroup(_currentGroup);
-                _statusLabel.Text = $"Imported {imported} host(s). Save (Ctrl+S) to persist.";
-                dialog.RequestStop();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.ErrorQuery("Error", $"Import failed: {ex.Message}", "OK");
-            }
-        };
-        cancelBtn.Accepting += (_, _) => dialog.RequestStop();
-
-        dialog.Add(textView, importBtn, cancelBtn);
+        var dialog = new ImportDialog(_appService.ConfigService, _log);
         Terminal.Gui.Application.Run(dialog);
+        if (dialog.Saved)
+        {
+            _hasUnsavedChanges = true;
+            _groupTreeView.RefreshGroups();
+            LoadHostsForGroup(_currentGroup);
+            _statusLabel.Text = $"Imported {dialog.ImportedCount} host(s). Save (Ctrl+S) to persist.";
+        }
     }
 
     private void OnExport()
@@ -658,41 +366,15 @@ public class MainWindow : Window
         var item = _hostListSource[_hostListView.SelectedItem];
         var hostName = item.TrimStart().Split(' ')[0];
 
-        try
+        var fragment = _appService.ExportHost(hostName);
+        if (string.IsNullOrEmpty(fragment))
         {
-            var fragment = _appService.ExportHost(hostName);
-            if (string.IsNullOrEmpty(fragment))
-            {
-                MessageBox.ErrorQuery("Error", $"Host '{hostName}' not found.", "OK");
-                return;
-            }
-
-            var dialog = new Dialog
-            {
-                Title = $"Export: {hostName}",
-                Width = 70,
-                Height = 20,
-            };
-
-            var textView = new TextView
-            {
-                X = 0, Y = 0,
-                Width = Dim.Fill(),
-                Height = Dim.Fill(2),
-                ReadOnly = true,
-                WordWrap = false,
-                Text = fragment
-            };
-
-            var closeBtn = new Button { X = 0, Y = Pos.AnchorEnd(1), Text = "Close" };
-            closeBtn.Accepting += (_, _) => dialog.RequestStop();
-            dialog.Add(textView, closeBtn);
-            Terminal.Gui.Application.Run(dialog);
+            MessageBox.ErrorQuery("Error", $"Host '{hostName}' not found.", "OK");
+            return;
         }
-        catch (Exception ex)
-        {
-            MessageBox.ErrorQuery("Error", $"Export failed: {ex.Message}", "OK");
-        }
+
+        var dialog = new ExportDialog(hostName, fragment);
+        Terminal.Gui.Application.Run(dialog);
     }
 
     private void OnQuit()

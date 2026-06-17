@@ -23,7 +23,6 @@ public class SshConfigParser
         ConfigNode? currentSection = null;
         var pendingComments = new List<string>();
         var pendingGroups = new List<string>();
-        var sectionBlockedForGroups = false;
 
         for (int i = 0; i < lines.Length; i++)
         {
@@ -32,7 +31,6 @@ public class SshConfigParser
 
             if (string.IsNullOrWhiteSpace(line))
             {
-                sectionBlockedForGroups = currentSection != null;
                 FlushPendingComments(config, currentSection, pendingComments);
                 config.Nodes.Add(new EmptyLine { LineNumber = lineNum });
                 continue;
@@ -53,16 +51,8 @@ public class SshConfigParser
 
                     if (groups.Count > 0)
                     {
-                        if (currentSection is HostSection host && !sectionBlockedForGroups)
-                        {
-                            _log.Write($"  tui-group at L{lineNum}: [{string.Join(", ", groups)}] for host '{host.Pattern}'");
-                            host.Groups.AddRange(groups);
-                        }
-                        else
-                        {
-                            _log.Write($"  tui-group at L{lineNum}: [{string.Join(", ", groups)}] (pending for next host)");
-                            pendingGroups.AddRange(groups);
-                        }
+                        _log.Write($"  tui-group at L{lineNum}: [{string.Join(", ", groups)}] (pending for next host)");
+                        pendingGroups.AddRange(groups);
                     }
                 }
                 else if (currentSection is HostSection hostSection && indent > 0)
@@ -101,7 +91,6 @@ public class SshConfigParser
                     pendingGroups.Clear();
                 }
                 pendingComments.Clear();
-                sectionBlockedForGroups = false;
                 config.Nodes.Add(currentSection);
                 continue;
             }
@@ -118,7 +107,6 @@ public class SshConfigParser
                     LeadingComments = new List<string>(pendingComments)
                 };
                 pendingComments.Clear();
-                sectionBlockedForGroups = false;
                 config.Nodes.Add(currentSection);
                 continue;
             }
