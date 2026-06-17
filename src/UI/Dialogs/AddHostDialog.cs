@@ -47,8 +47,24 @@ public class AddHostDialog : Dialog
         DialogHelper.AddField(this, "Port:", portField, ref y);
         y++;
 
-        var idFileField = new TextField { X = 15, Y = y, Width = Dim.Fill(), Text = "" };
-        DialogHelper.AddField(this, "IdentityFile:", idFileField, ref y);
+        var idFileLabel = new Label { X = 0, Y = y, Width = 15, Text = "IdentityFile:" };
+        var idFileField = new TextField { X = 15, Y = y, Width = 30, Text = "" };
+        var browseBtn = new Button
+        {
+            X = 47, Y = y,
+            Text = "...",
+            Width = 9,
+        };
+        browseBtn.Accepting += (_, _) =>
+        {
+            var picker = new SshKeyPickerDialog(pickerMode: true);
+            Terminal.Gui.Application.Run(picker);
+            if (picker.SelectedKey != null)
+            {
+                idFileField.Text = picker.SelectedKey;
+            }
+        };
+        Add(idFileLabel, idFileField, browseBtn);
         y++;
 
         var proxyField = new TextField { X = 15, Y = y, Width = Dim.Fill(), Text = "" };

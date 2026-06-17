@@ -60,6 +60,11 @@ public class MainWindow : Window
                     new MenuItem("_Test Connection", "Test ssh connection (Ctrl+T)", OnTestConnection, null, null, Key.T.WithCtrl),
                     new MenuItem("_Copy SSH String", "Copy ssh command", OnCopySshString),
                 }),
+                new MenuBarItem("_Tools", new[]
+                {
+                    new MenuItem("SSH _Keys", "Browse SSH keys in ~/.ssh", OnSshKeys),
+                    new MenuItem("_Generate SSH Key", "Generate a new SSH key pair", OnGenerateSshKey),
+                }),
                 new MenuBarItem("_Help", new[]
                 {
                     new MenuItem("_About", "About ssh-config-tui", OnAbout),
@@ -291,6 +296,18 @@ public class MainWindow : Window
         {
             _statusLabel.Text = $"Error reloading: {ex.Message}";
         }
+    }
+
+    private static void OnSshKeys()
+    {
+        var dialog = new SshKeyPickerDialog();
+        Terminal.Gui.Application.Run(dialog);
+    }
+
+    private static void OnGenerateSshKey()
+    {
+        var dialog = new GenerateSshKeyDialog();
+        Terminal.Gui.Application.Run(dialog);
     }
 
     private static void OnAbout()

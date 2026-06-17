@@ -50,12 +50,28 @@ public class HostDetailDialog : Dialog
         DialogHelper.AddField(this, "Port:", portField, ref y);
         y++;
 
+        var idFileLabel = new Label { X = 0, Y = y, Width = 15, Text = "IdentityFile:" };
         var idFileField = new TextField
         {
-            X = 0, Y = y, Width = Dim.Fill(),
+            X = 15, Y = y, Width = 30,
             Text = sourceEntry?.IdentityFile ?? entry?.IdentityFile ?? ""
         };
-        DialogHelper.AddField(this, "IdentityFile:", idFileField, ref y);
+        var browseBtn = new Button
+        {
+            X = 47, Y = y,
+            Text = "...",
+            Width = 9,
+        };
+        browseBtn.Accepting += (_, _) =>
+        {
+            var picker = new SshKeyPickerDialog(pickerMode: true);
+            Terminal.Gui.Application.Run(picker);
+            if (picker.SelectedKey != null)
+            {
+                idFileField.Text = picker.SelectedKey;
+            }
+        };
+        Add(idFileLabel, idFileField, browseBtn);
         y++;
 
         var proxyField = new TextField
