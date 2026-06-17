@@ -121,6 +121,11 @@ public class ConfigService
             Directives = ToDirectives(entry)
         };
 
+        if (CurrentConfig.Nodes.Count > 0 && CurrentConfig.Nodes[^1] is not EmptyLine)
+        {
+            CurrentConfig.Nodes.Add(new EmptyLine());
+        }
+
         CurrentConfig.Nodes.Add(section);
     }
 
