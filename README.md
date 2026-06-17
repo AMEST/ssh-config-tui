@@ -19,7 +19,12 @@ A terminal UI for managing your SSH config. Organize hosts into groups, edit par
 
 ## Installation
 
-> ⚠️ **Notice:** The `ssh-config-tui` dotnet tool has not been published to NuGet yet. Before the first release, you can only run it from source (see [Building from source](#building-from-source)).
+### dotnet tool (cross-platform)
+
+```bash
+dotnet tool install -g ssh-config-tui
+ssh-config-tui
+```
 
 ### Self-contained binaries (no .NET required)
 
