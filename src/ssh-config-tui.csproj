@@ -6,11 +6,13 @@
     <RootNamespace>SshConfigTui</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RuntimeIdentifiers>osx-arm64;osx-x64;win-x64;linux-x64</RuntimeIdentifiers>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ssh-config-tui</ToolCommandName>
     <PackageId>ssh-config-tui</PackageId>
-    <PackageVersion>1.1.0</PackageVersion>
+    <PackageVersion>1.1.1</PackageVersion>
     <Authors>AMEST</Authors>
     <Description>A terminal UI for managing your SSH config. Organize hosts into groups, edit parameters, and keep your ~/.ssh/config clean.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
